@@ -1,0 +1,20 @@
+{
+  "name": "parce",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=apps/backend\" \"npm run dev --workspace=apps/owner-app\" \"npm run dev --workspace=apps/customer-app\"",
+    "dev:backend": "npm run dev --workspace=apps/backend",
+    "dev:owner": "npm run dev --workspace=apps/owner-app",
+    "dev:customer": "npm run dev --workspace=apps/customer-app",
+    "build": "npm run build --workspace=apps/backend && npm run build --workspace=apps/owner-app && npm run build --workspace=apps/customer-app",
+    "db:migrate": "npm run prisma:migrate --workspace=apps/backend",
+    "db:studio": "npm run prisma:studio --workspace=apps/backend",
+    "db:seed": "npm run prisma:seed --workspace=apps/backend",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
