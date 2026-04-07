@@ -114,13 +114,54 @@ Si no puedes identificar el ingrediente, usa el más parecido.`
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id: restaurantId },
     })
+
     const system = `Eres Parce, el asistente inteligente del restaurante "${restaurant?.name}".
 Hablas en colombiano informal, eres cálido, directo y siempre das respuestas cortas y accionables.
 Tienes acceso a datos del negocio y puedes ayudar con preguntas sobre ventas, inventario, costos y estrategias.
 Nunca uses jerga financiera compleja. Habla como un parce que conoce el negocio.
 IMPORTANTE: No uses markdown. Nada de asteriscos, nada de guiones para listas, nada de almohadillas. Solo texto plano con saltos de línea cuando sea necesario.`
 
-    return this.callSonnet(system, messages, restaurantId, 'copilot')
+    // Compactar si hay más de 20 mensajes
+    const compacted = await this.compactMessages(messages, restaurantId)
+
+    await this.checkRateLimit(restaurantId, 'haiku', 50)
+    const response = await this.anthropic.messages.create({
+      model: this.haikuModel,
+      max_tokens: 512,
+      system,
+      messages: compacted,
+    })
+    const content = response.content[0].type === 'text' ? response.content[0].text : ''
+    await this.trackInteraction(restaurantId, 'haiku', response.usage.input_tokens, response.usage.output_tokens, 'copilot')
+    return content
+  }
+
+  private async compactMessages(
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    restaurantId: string,
+  ): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
+    const COMPACT_THRESHOLD = 20
+    const KEEP_RECENT = 10
+
+    if (messages.length <= COMPACT_THRESHOLD) return messages
+
+    const toSummarize = messages.slice(0, messages.length - KEEP_RECENT)
+    const recent = messages.slice(messages.length - KEEP_RECENT)
+
+    const summaryPrompt = `Resume esta conversación en máximo 3 oraciones. Solo los temas tratados y conclusiones importantes. Sin saludos ni relleno:\n\n${toSummarize.map(m => `${m.role === 'user' ? 'Dueño' : 'Parce'}: ${m.content}`).join('\n')}`
+
+    const summary = await this.callHaiku(
+      'Eres un asistente que resume conversaciones de forma concisa. Responde solo con el resumen, sin introducción.',
+      summaryPrompt,
+      restaurantId,
+      'compact_chat',
+    )
+
+    return [
+      { role: 'user', content: `[Contexto previo de la conversación: ${summary}]` },
+      { role: 'assistant', content: 'Entendido, tengo el contexto.' },
+      ...recent,
+    ]
   }
 
   async advanceOnboarding(
