@@ -5,6 +5,8 @@ export interface Order {
   orderNumber: number
   status: string
   orderType: string
+  tableId?: string
+  tableLabel?: string
   total: number
   customerName: string
   customerPhone: string

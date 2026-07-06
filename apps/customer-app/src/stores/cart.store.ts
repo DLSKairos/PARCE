@@ -7,10 +7,20 @@ export interface CartItem {
   quantity: number
 }
 
+export interface RestaurantTable {
+  id: string
+  name: string
+  position: number
+}
+
 interface CartState {
   items: CartItem[]
   restaurantId: string | null
+  tables: RestaurantTable[]
+  presetTable: string | null // valor de ?mesa=N en la URL (QR por mesa)
   setRestaurantId: (id: string) => void
+  setTables: (tables: RestaurantTable[]) => void
+  setPresetTable: (mesa: string | null) => void
   addItem: (item: Omit<CartItem, 'quantity'>) => void
   removeItem: (menuItemId: string) => void
   updateQty: (menuItemId: string, qty: number) => void
@@ -22,7 +32,11 @@ interface CartState {
 export const useCartStore = create<CartState>((set, get) => ({
   items: [],
   restaurantId: null,
+  tables: [],
+  presetTable: null,
   setRestaurantId: (id) => set({ restaurantId: id }),
+  setTables: (tables) => set({ tables }),
+  setPresetTable: (mesa) => set({ presetTable: mesa }),
   addItem: (item) => set((s) => {
     const existing = s.items.find(i => i.menuItemId === item.menuItemId)
     if (existing) {

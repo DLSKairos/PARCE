@@ -69,6 +69,14 @@ export function SettingsPage() {
         </Card>
       </form>
 
+      <Card className="mb-4 flex justify-between items-center" onClick={() => navigate('/settings/tables')}>
+        <div>
+          <p className="font-ui font-semibold text-texto-oscuro">🍽️ Mesas</p>
+          <p className="font-body text-texto-tenue text-sm">Configura las mesas para pedidos en tu restaurante</p>
+        </div>
+        <span className="text-texto-tenue text-xl">›</span>
+      </Card>
+
       <Card className="mb-4 bg-crema-suave">
         <p className="font-ui font-semibold text-texto-oscuro mb-1">Link de tu restaurante</p>
         <p className="font-body text-texto-tenue text-sm break-all">{customerUrl}</p>

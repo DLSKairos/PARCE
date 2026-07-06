@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module'
 import { AuthModule } from './modules/auth/auth.module'
 import { RestaurantsModule } from './modules/restaurants/restaurants.module'
 import { MenuModule } from './modules/menu/menu.module'
+import { TablesModule } from './modules/tables/tables.module'
 import { OrdersModule } from './modules/orders/orders.module'
 import { InventoryModule } from './modules/inventory/inventory.module'
 import { FinancesModule } from './modules/finances/finances.module'
@@ -33,6 +34,7 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
     AuthModule,
     RestaurantsModule,
     MenuModule,
+    TablesModule,
     OrdersModule,
     InventoryModule,
     FinancesModule,

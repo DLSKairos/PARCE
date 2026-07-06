@@ -11,6 +11,7 @@ import { InventoryPage } from './pages/inventory/InventoryPage'
 import { FinancesPage } from './pages/finances/FinancesPage'
 import { AIPage } from './pages/ai/AIPage'
 import { SettingsPage } from './pages/settings/SettingsPage'
+import { TablesPage } from './pages/tables/TablesPage'
 import { BottomNav } from './components/ui/BottomNav'
 import { useSocket } from './hooks/useSocket'
 import { useOffline } from './hooks/useOffline'
@@ -76,6 +77,7 @@ export default function App() {
                   <Route path="/finances" element={<FinancesPage />} />
                   <Route path="/ai" element={<AIPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/settings/tables" element={<TablesPage />} />
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 </Routes>
               </AppLayout>

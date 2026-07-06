@@ -9,21 +9,33 @@ import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Spinner } from '../../components/ui/Spinner'
 
-const NEXT_STATUS: Record<string, string> = {
-  PENDING:   'CONFIRMED',
-  CONFIRMED: 'PREPARING',
-  PREPARING: 'READY',
-  READY:     'DELIVERED',
+// El siguiente estado depende de la modalidad: solo los domicilios pasan por "En camino"
+const getNextStatus = (order: { status: string; orderType: string }): string | null => {
+  switch (order.status) {
+    case 'PENDING':    return 'CONFIRMED'
+    case 'CONFIRMED':  return 'PREPARING'
+    case 'PREPARING':  return 'READY'
+    case 'READY':      return order.orderType === 'DELIVERY' ? 'IN_TRANSIT' : 'DELIVERED'
+    case 'IN_TRANSIT': return 'DELIVERED'
+    default:           return null
+  }
 }
 
 const NEXT_LABEL: Record<string, string> = {
-  PENDING:   'Confirmar',
-  CONFIRMED: 'Preparar',
-  PREPARING: 'Listo',
-  READY:     'Entregado',
+  CONFIRMED:  'Confirmar',
+  PREPARING:  'Preparar',
+  READY:      'Listo',
+  IN_TRANSIT: 'En camino',
+  DELIVERED:  'Entregado',
 }
 
-const STATUS_TABS = ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'DELIVERED']
+const ORDER_TYPE_META: Record<string, { icon: string; label: string }> = {
+  DELIVERY: { icon: '🛵', label: 'Domicilio' },
+  PICKUP:   { icon: '🏪', label: 'Recoger' },
+  DINE_IN:  { icon: '🍽️', label: 'En tienda' },
+}
+
+const STATUS_TABS = ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'IN_TRANSIT', 'DELIVERED']
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
@@ -52,27 +64,39 @@ export function OrdersPage() {
     }
   }
 
-  const handleStatusUpdate = async (orderId: string, currentStatus: string) => {
-    const newStatus = NEXT_STATUS[currentStatus]
+  const handleStatusUpdate = async (order: any) => {
+    const newStatus = getNextStatus(order)
     if (!newStatus) return
 
-    setUpdating(orderId)
+    setUpdating(order.id)
 
     if (!isOnline) {
-      addAction({ type: 'UPDATE_ORDER_STATUS', payload: { orderId, status: newStatus } })
-      const order = orders.find(o => o.id === orderId)
-      if (order) updateOrder({ ...order, status: newStatus })
+      addAction({ type: 'UPDATE_ORDER_STATUS', payload: { orderId: order.id, status: newStatus } })
+      updateOrder({ ...order, status: newStatus })
       toast.success('Guardado offline. Se sincronizará cuando tengas conexión.')
       setUpdating(null)
       return
     }
 
     try {
-      const { data } = await ordersApi.updateStatus(orderId, newStatus)
+      const { data } = await ordersApi.updateStatus(order.id, newStatus)
       updateOrder(data.data)
-      toast.success(`Pedido: ${NEXT_LABEL[currentStatus]}`)
+      toast.success(`Pedido: ${NEXT_LABEL[newStatus]}`)
     } catch {
       toast.error('Error actualizando pedido')
+    } finally {
+      setUpdating(null)
+    }
+  }
+
+  const handleMarkPaid = async (orderId: string) => {
+    setUpdating(orderId)
+    try {
+      const { data } = await ordersApi.markPaid(orderId)
+      updateOrder(data.data)
+      toast.success('Pedido cobrado 💵')
+    } catch {
+      toast.error('Error marcando el pago')
     } finally {
       setUpdating(null)
     }
@@ -119,11 +143,19 @@ export function OrdersPage() {
             <p>No hay pedidos en este estado</p>
           </div>
         ) : (
-          filtered.map(order => (
+          filtered.map(order => {
+            const typeMeta = ORDER_TYPE_META[order.orderType] || ORDER_TYPE_META.PICKUP
+            const pendingCharge = order.payment?.method === 'CASH' && order.payment?.status === 'PENDING'
+            const nextStatus = getNextStatus(order)
+            return (
             <Card key={order.id} className="flex flex-col gap-3">
               <div className="flex justify-between items-start">
                 <div>
                   <p className="font-ui font-bold text-texto-oscuro">Pedido #{order.orderNumber}</p>
+                  <p className="font-body text-texto-oscuro text-xs mt-0.5">
+                    {typeMeta.icon} {typeMeta.label}
+                    {order.tableLabel && <span className="font-semibold"> &bull; {order.tableLabel}</span>}
+                  </p>
                   <p className="font-body text-texto-tenue text-sm">{order.customerName} &bull; {order.customerPhone}</p>
                   {order.customerAddress && (
                     <p className="font-body text-texto-tenue text-xs">{order.customerAddress}</p>
@@ -131,6 +163,13 @@ export function OrdersPage() {
                 </div>
                 <div className="text-right">
                   <Badge status={order.status} />
+                  <div className="mt-1">
+                    {pendingCharge ? (
+                      <Badge label="🟠 Cobro pendiente" variant="warning" />
+                    ) : order.payment?.status === 'APPROVED' ? (
+                      <Badge label="✅ Pagado" variant="success" />
+                    ) : null}
+                  </div>
                   <p className="font-ui font-bold text-naranja mt-1">{fmt(order.total)}</p>
                 </div>
               </div>
@@ -150,19 +189,32 @@ export function OrdersPage() {
                 </p>
               )}
 
-              {NEXT_STATUS[order.status] && (
-                <Button
-                  onClick={() => handleStatusUpdate(order.id, order.status)}
-                  loading={updating === order.id}
-                  variant={order.status === 'READY' ? 'secondary' : 'primary'}
-                  size="sm"
-                  fullWidth
-                >
-                  {NEXT_LABEL[order.status]}
-                </Button>
-              )}
+              <div className="flex flex-col gap-2">
+                {nextStatus && (
+                  <Button
+                    onClick={() => handleStatusUpdate(order)}
+                    loading={updating === order.id}
+                    variant={order.status === 'READY' ? 'secondary' : 'primary'}
+                    size="sm"
+                    fullWidth
+                  >
+                    {NEXT_LABEL[nextStatus]}
+                  </Button>
+                )}
+                {pendingCharge && order.status !== 'CANCELLED' && (
+                  <Button
+                    onClick={() => handleMarkPaid(order.id)}
+                    loading={updating === order.id}
+                    variant="secondary"
+                    size="sm"
+                    fullWidth
+                  >
+                    💵 Marcar como pagado
+                  </Button>
+                )}
+              </div>
             </Card>
-          ))
+          )})
         )}
       </div>
     </div>

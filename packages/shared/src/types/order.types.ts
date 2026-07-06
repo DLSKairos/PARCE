@@ -17,6 +17,8 @@ export interface Order {
   orderNumber: number
   status: OrderStatus
   orderType: OrderType
+  tableId?: string
+  tableLabel?: string
   total: number
   costTotal: number
   customerName: string
@@ -44,6 +46,8 @@ export interface Payment {
 export interface CreateOrderDto {
   restaurantId: string
   orderType: OrderType
+  tableId?: string
+  tableLabel?: string
   items: { menuItemId: string; quantity: number }[]
   customerName: string
   customerPhone: string

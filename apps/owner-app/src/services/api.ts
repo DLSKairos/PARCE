@@ -62,6 +62,15 @@ export const menuApi = {
 export const ordersApi = {
   getAll: (params?: any) => api.get('/orders', { params }),
   updateStatus: (id: string, status: string) => api.patch(`/orders/${id}/status`, { status }),
+  markPaid: (id: string) => api.patch(`/orders/${id}/mark-paid`),
+}
+
+export const tablesApi = {
+  getAll: () => api.get('/tables'),
+  generate: (count: number) => api.post('/tables/generate', { count }),
+  create: (name: string) => api.post('/tables', { name }),
+  update: (id: string, data: { name?: string; isActive?: boolean }) => api.patch(`/tables/${id}`, data),
+  remove: (id: string) => api.delete(`/tables/${id}`),
 }
 
 export const inventoryApi = {

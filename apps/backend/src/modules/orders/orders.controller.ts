@@ -37,8 +37,15 @@ export class OrdersController {
     @CurrentUser() user: JwtPayload,
     @Query('status') status?: string,
     @Query('date') date?: string,
+    @Query('type') type?: string,
   ) {
-    return this.service.getOrders(user.restaurantId, status, date)
+    return this.service.getOrders(user.restaurantId, status, date, type)
+  }
+
+  @Patch('orders/:id/mark-paid')
+  @UseGuards(JwtGuard)
+  markAsPaid(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.service.markAsPaid(id, user.restaurantId)
   }
 
   @Patch('orders/:id/status')

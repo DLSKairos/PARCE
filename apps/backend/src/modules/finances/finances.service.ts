@@ -21,22 +21,35 @@ export class FinancesService {
     const todayStart = startOfDay(now)
     const todayEnd = endOfDay(now)
 
-    const [ordersData, expensesData] = await Promise.all([
+    const [ordersData, expensesData, pendingCharges] = await Promise.all([
       this.prisma.order.findMany({
         where: {
           restaurantId,
           createdAt: { gte: todayStart, lte: todayEnd },
           payment: { status: 'APPROVED' },
         },
-        select: { total: true, costTotal: true },
+        select: { total: true, costTotal: true, payment: { select: { method: true } } },
       }),
       this.prisma.expense.findMany({
         where: { restaurantId, date: { gte: todayStart, lte: todayEnd } },
         select: { amount: true },
       }),
+      // Pedidos con "Pagar en restaurante" aún sin cobrar (no suman hasta marcarse pagados)
+      this.prisma.order.findMany({
+        where: {
+          restaurantId,
+          status: { notIn: ['CANCELLED', 'DELIVERED'] },
+          payment: { method: 'CASH', status: 'PENDING' },
+        },
+        select: { total: true },
+      }),
     ])
 
     const revenue = ordersData.reduce((s, o) => s + Number(o.total), 0)
+    const revenueCash = ordersData
+      .filter((o) => o.payment?.method === 'CASH')
+      .reduce((s, o) => s + Number(o.total), 0)
+    const revenueGateway = revenue - revenueCash
     const costs = ordersData.reduce((s, o) => s + Number(o.costTotal), 0)
     const expenses = expensesData.reduce((s, e) => s + Number(e.amount), 0)
     const netProfit = revenue - costs - expenses
@@ -45,11 +58,15 @@ export class FinancesService {
     return {
       today: format(now, 'yyyy-MM-dd'),
       revenue,
+      revenueGateway,
+      revenueCash,
       costs,
       expenses,
       netProfit,
       ordersCount: ordersData.length,
       avgOrderValue: ordersData.length > 0 ? revenue / ordersData.length : 0,
+      pendingChargesCount: pendingCharges.length,
+      pendingChargesTotal: pendingCharges.reduce((s, o) => s + Number(o.total), 0),
       weekTrend,
     }
   }

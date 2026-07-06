@@ -5,13 +5,24 @@ import { publicApi } from '../services/api'
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3100'
 
-const STEPS = [
-  { status: 'PENDING',   label: 'Pendiente',       icon: '🕐', desc: 'Tu pedido está esperando confirmación' },
-  { status: 'CONFIRMED', label: 'Confirmado',       icon: '✅', desc: '¡El restaurante recibió tu pedido!' },
-  { status: 'PREPARING', label: 'En preparación',   icon: '👨‍🍳', desc: 'Estamos preparando tu pedido' },
-  { status: 'READY',     label: 'Listo',            icon: '🎉', desc: '¡Tu pedido está listo para recoger!' },
-  { status: 'DELIVERED', label: 'Entregado',        icon: '😊', desc: '¡Buen provecho, parcero!' },
-]
+const getSteps = (orderType: string) => {
+  const readyDesc =
+    orderType === 'DELIVERY' ? 'Tu pedido está listo, pronto sale en camino'
+    : orderType === 'DINE_IN' ? '¡Listo! Te lo llevamos a tu mesa'
+    : '¡Tu pedido está listo para recoger!'
+
+  const steps = [
+    { status: 'PENDING',    label: 'Pendiente',      icon: '🕐', desc: 'Tu pedido está esperando confirmación' },
+    { status: 'CONFIRMED',  label: 'Confirmado',      icon: '✅', desc: '¡El restaurante recibió tu pedido!' },
+    { status: 'PREPARING',  label: 'En preparación',  icon: '👨‍🍳', desc: 'Estamos preparando tu pedido' },
+    { status: 'READY',      label: 'Listo',           icon: '🎉', desc: readyDesc },
+  ]
+  if (orderType === 'DELIVERY') {
+    steps.push({ status: 'IN_TRANSIT', label: 'En camino', icon: '🛵', desc: 'Tu pedido va en camino a tu dirección' })
+  }
+  steps.push({ status: 'DELIVERED', label: 'Entregado', icon: '😊', desc: '¡Buen provecho, parcero!' })
+  return steps
+}
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
@@ -70,14 +81,19 @@ export function OrderStatusPage() {
     )
   }
 
+  const STEPS = getSteps(order.orderType)
   const currentStepIndex = STEPS.findIndex(s => s.status === order.status)
   const currentStep = STEPS[currentStepIndex] || STEPS[0]
+  const pendingCharge = order.paymentMethod === 'CASH' && order.paymentStatus !== 'APPROVED'
 
   return (
     <div className="min-h-screen bg-azul-noche">
       {/* Estado actual */}
       <div className="px-4 pt-8 pb-6 text-center">
-        <p className="font-body text-texto-tenue text-sm mb-1">Pedido #{order.orderNumber}</p>
+        <p className="font-body text-texto-tenue text-sm mb-1">
+          Pedido #{order.orderNumber}
+          {order.tableLabel && <span> &bull; 🍽️ {order.tableLabel}</span>}
+        </p>
         <p className="text-5xl mb-2">{currentStep.icon}</p>
         <h1 className="font-ui font-bold text-crema text-2xl">{currentStep.label}</h1>
         <p className="font-body text-texto-tenue text-sm mt-1">{currentStep.desc}</p>
@@ -119,6 +135,11 @@ export function OrderStatusPage() {
           <span>Total</span>
           <span>{fmt(order.total)}</span>
         </div>
+        {pendingCharge && order.status !== 'CANCELLED' && (
+          <p className="font-body text-ambar text-xs mt-2">
+            💵 Pagas {order.orderType === 'PICKUP' ? 'al recoger' : 'en el restaurante'}
+          </p>
+        )}
       </div>
 
       {order.status === 'DELIVERED' && (

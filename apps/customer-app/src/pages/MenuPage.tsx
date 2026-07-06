@@ -8,7 +8,7 @@ const fmt = (n: number) =>
 
 export function MenuPage() {
   const navigate = useNavigate()
-  const { addItem, count, total, setRestaurantId } = useCartStore()
+  const { addItem, count, total, setRestaurantId, setTables, setPresetTable } = useCartStore()
   const [restaurant, setRestaurant] = useState<any>(null)
   const [menu, setMenu] = useState<{ categories: any[]; uncategorized: any[] } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -16,6 +16,9 @@ export function MenuPage() {
   useEffect(() => {
     const slug = getRestaurantSlug()
     if (!slug) { navigate('/not-found'); return }
+    // QR por mesa: ?mesa=N preselecciona la mesa en el checkout
+    const mesa = new URLSearchParams(window.location.search).get('mesa')
+    if (mesa) setPresetTable(mesa)
     loadRestaurant(slug)
   }, [])
 
@@ -25,6 +28,7 @@ export function MenuPage() {
       const rest = restRes.data.data
       setRestaurant(rest)
       setRestaurantId(rest.id)
+      setTables(rest.tables || [])
       document.title = rest.name
       const menuRes = await publicApi.getMenu(rest.id)
       setMenu(menuRes.data.data)

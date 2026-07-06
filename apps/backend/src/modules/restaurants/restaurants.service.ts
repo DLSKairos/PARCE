@@ -14,6 +14,11 @@ export class RestaurantsService {
 
   async getPublicProfile(slug: string) {
     const r = await this.findBySlug(slug)
+    const tables = await this.prisma.table.findMany({
+      where: { restaurantId: r.id, isActive: true },
+      orderBy: { position: 'asc' },
+      select: { id: true, name: true, position: true },
+    })
     return {
       id: r.id,
       slug: r.slug,
@@ -23,6 +28,7 @@ export class RestaurantsService {
       isOpen: r.isOpen,
       phone: r.phone,
       openHours: r.openHours,
+      tables,
     }
   }
 

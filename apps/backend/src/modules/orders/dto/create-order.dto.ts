@@ -27,6 +27,14 @@ export class CreateOrderDto {
   @IsEnum(OrderType)
   orderType: OrderType
 
+  @IsOptional()
+  @IsUUID()
+  tableId?: string
+
+  @IsOptional()
+  @IsString()
+  tableLabel?: string
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)

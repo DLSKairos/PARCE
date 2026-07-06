@@ -4,8 +4,16 @@ import { toast } from 'react-hot-toast'
 import { publicApi } from '../services/api'
 import { useCartStore } from '../stores/cart.store'
 
-const PAYMENT_METHODS = [
-  { id: 'NEQUI',     label: 'Nequi',    icon: '📱' },
+type OrderType = 'PICKUP' | 'DELIVERY' | 'DINE_IN'
+
+const ORDER_TYPES: { id: OrderType; label: string }[] = [
+  { id: 'PICKUP',   label: '🏪 Recoger' },
+  { id: 'DELIVERY', label: '🛵 Domicilio' },
+  { id: 'DINE_IN',  label: '🍽️ En tienda' },
+]
+
+const GATEWAY_METHODS = [
+  { id: 'NEQUI',     label: 'Nequi',     icon: '📱' },
   { id: 'DAVIPLATA', label: 'Daviplata', icon: '💳' },
   { id: 'PSE',       label: 'PSE',       icon: '🏦' },
   { id: 'CARD',      label: 'Tarjeta',   icon: '💳' },
@@ -16,18 +24,50 @@ const fmt = (n: number) =>
 
 export function CheckoutPage() {
   const navigate = useNavigate()
-  const { items, restaurantId, total, clear } = useCartStore()
+  const { items, restaurantId, tables, presetTable, total, clear } = useCartStore()
   const [form, setForm] = useState({ customerName: '', customerPhone: '', customerAddress: '', notes: '' })
-  const [orderType, setOrderType] = useState<'PICKUP' | 'DELIVERY'>('PICKUP')
+  const [orderType, setOrderType] = useState<OrderType>(presetTable ? 'DINE_IN' : 'PICKUP')
+
+  // Si llegó por QR de mesa (?mesa=N), preseleccionarla
+  const matchPresetTable = () => {
+    if (!presetTable || tables.length === 0) return ''
+    const match = tables.find(
+      t => t.name === presetTable || t.name === `Mesa ${presetTable}` || String(t.position) === presetTable,
+    )
+    return match?.id || ''
+  }
+  const [tableId, setTableId] = useState(matchPresetTable())
+  const [tableLabel, setTableLabel] = useState(tables.length === 0 ? (presetTable || '') : '')
   const [paymentMethod, setPaymentMethod] = useState('NEQUI')
   const [loading, setLoading] = useState(false)
 
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [field]: e.target.value }))
 
+  const handleOrderType = (type: OrderType) => {
+    setOrderType(type)
+    // El pago en restaurante no aplica para domicilios
+    if (type === 'DELIVERY' && paymentMethod === 'CASH') setPaymentMethod('NEQUI')
+  }
+
+  const inputClass =
+    'px-4 py-3 bg-crema-suave border border-gray-200 rounded-card font-body text-sm text-texto-oscuro placeholder-texto-tenue focus:outline-none focus:border-naranja'
+
   const handleOrder = async () => {
     if (!form.customerName.trim() || !form.customerPhone.trim()) {
       toast.error('Completa tu nombre y teléfono')
+      return
+    }
+    if (orderType === 'DELIVERY' && !form.customerAddress.trim()) {
+      toast.error('Ingresa la dirección de entrega')
+      return
+    }
+    if (orderType === 'DINE_IN' && tables.length > 0 && !tableId) {
+      toast.error('Selecciona tu mesa')
+      return
+    }
+    if (orderType === 'DINE_IN' && tables.length === 0 && !tableLabel.trim()) {
+      toast.error('Escribe el número de tu mesa')
       return
     }
     if (!restaurantId) {
@@ -40,6 +80,11 @@ export function CheckoutPage() {
       const { data } = await publicApi.createOrder({
         restaurantId,
         orderType,
+        ...(orderType === 'DINE_IN'
+          ? tables.length > 0
+            ? { tableId }
+            : { tableLabel: tableLabel.trim() }
+          : {}),
         items: items.map(i => ({ menuItemId: i.menuItemId, quantity: i.quantity })),
         ...form,
         paymentMethod,
@@ -67,38 +112,65 @@ export function CheckoutPage() {
       </div>
 
       <div className="px-4 py-4 pb-36 flex flex-col gap-4">
-        {/* Tipo de pedido */}
+        {/* Modalidad */}
         <div className="bg-blanco-calido rounded-card p-4 shadow-card">
           <p className="font-ui font-semibold text-texto-oscuro mb-3">¿Cómo lo recibes?</p>
-          <div className="flex gap-3">
-            {(['PICKUP', 'DELIVERY'] as const).map(type => (
+          <div className="flex gap-2">
+            {ORDER_TYPES.map(type => (
               <button
-                key={type}
-                onClick={() => setOrderType(type)}
-                className={`flex-1 py-3 rounded-card font-ui font-semibold text-sm transition-colors ${
-                  orderType === type
+                key={type.id}
+                onClick={() => handleOrderType(type.id)}
+                className={`flex-1 py-3 px-1 rounded-card font-ui font-semibold text-xs transition-colors ${
+                  orderType === type.id
                     ? 'bg-naranja text-white shadow-naranja'
                     : 'bg-gray-100 text-texto-tenue'
                 }`}
               >
-                {type === 'PICKUP' ? '🏪 Recoger' : '🛵 Domicilio'}
+                {type.label}
               </button>
             ))}
           </div>
+
+          {/* Selección de mesa */}
+          {orderType === 'DINE_IN' && (
+            <div className="mt-3">
+              {tables.length > 0 ? (
+                <select
+                  value={tableId}
+                  onChange={e => setTableId(e.target.value)}
+                  className={`w-full ${inputClass}`}
+                  required
+                >
+                  <option value="">¿En qué mesa estás? *</option>
+                  {tables.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className={`w-full ${inputClass}`}
+                  placeholder="Número de tu mesa *"
+                  value={tableLabel}
+                  onChange={e => setTableLabel(e.target.value)}
+                  required
+                />
+              )}
+            </div>
+          )}
         </div>
 
         {/* Datos del cliente */}
         <div className="bg-blanco-calido rounded-card p-4 shadow-card flex flex-col gap-3">
           <p className="font-ui font-semibold text-texto-oscuro">Tus datos</p>
           <input
-            className="px-4 py-3 bg-crema-suave border border-gray-200 rounded-card font-body text-sm text-texto-oscuro placeholder-texto-tenue focus:outline-none focus:border-naranja"
+            className={inputClass}
             placeholder="Tu nombre *"
             value={form.customerName}
             onChange={set('customerName')}
             required
           />
           <input
-            className="px-4 py-3 bg-crema-suave border border-gray-200 rounded-card font-body text-sm text-texto-oscuro placeholder-texto-tenue focus:outline-none focus:border-naranja"
+            className={inputClass}
             placeholder="Tu teléfono *"
             type="tel"
             value={form.customerPhone}
@@ -107,14 +179,15 @@ export function CheckoutPage() {
           />
           {orderType === 'DELIVERY' && (
             <input
-              className="px-4 py-3 bg-crema-suave border border-gray-200 rounded-card font-body text-sm text-texto-oscuro placeholder-texto-tenue focus:outline-none focus:border-naranja"
-              placeholder="Dirección de entrega"
+              className={inputClass}
+              placeholder="Dirección de entrega *"
               value={form.customerAddress}
               onChange={set('customerAddress')}
+              required
             />
           )}
           <textarea
-            className="px-4 py-3 bg-crema-suave border border-gray-200 rounded-card font-body text-sm text-texto-oscuro placeholder-texto-tenue focus:outline-none focus:border-naranja resize-none"
+            className={`${inputClass} resize-none`}
             placeholder="Notas especiales (opcional)"
             rows={2}
             value={form.notes}
@@ -126,7 +199,7 @@ export function CheckoutPage() {
         <div className="bg-blanco-calido rounded-card p-4 shadow-card">
           <p className="font-ui font-semibold text-texto-oscuro mb-3">Método de pago</p>
           <div className="grid grid-cols-2 gap-2">
-            {PAYMENT_METHODS.map(pm => (
+            {GATEWAY_METHODS.map(pm => (
               <button
                 key={pm.id}
                 onClick={() => setPaymentMethod(pm.id)}
@@ -139,7 +212,24 @@ export function CheckoutPage() {
                 {pm.icon} {pm.label}
               </button>
             ))}
+            {orderType !== 'DELIVERY' && (
+              <button
+                onClick={() => setPaymentMethod('CASH')}
+                className={`col-span-2 py-3 px-3 rounded-card font-ui font-semibold text-sm flex items-center gap-2 justify-center transition-colors ${
+                  paymentMethod === 'CASH'
+                    ? 'bg-naranja text-white shadow-naranja'
+                    : 'bg-gray-50 text-texto-tenue border border-gray-200'
+                }`}
+              >
+                💵 {orderType === 'PICKUP' ? 'Pagar al recoger' : 'Pagar en el restaurante'}
+              </button>
+            )}
           </div>
+          {paymentMethod === 'CASH' && (
+            <p className="font-body text-texto-tenue text-xs mt-3">
+              Tu pedido va a la cocina de una vez y pagas directamente en el restaurante.
+            </p>
+          )}
         </div>
       </div>
 

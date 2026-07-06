@@ -12,7 +12,8 @@ const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: ['PREPARING', 'CANCELLED'],
   PREPARING: ['READY'],
-  READY: ['DELIVERED'],
+  READY: ['IN_TRANSIT', 'DELIVERED'],
+  IN_TRANSIT: ['DELIVERED'],
   DELIVERED: [],
   CANCELLED: [],
 }
@@ -27,6 +28,34 @@ export class OrdersService {
   ) {}
 
   async createOrder(dto: CreateOrderDto) {
+    // Reglas por modalidad
+    if (dto.orderType === 'DELIVERY') {
+      if (!dto.customerAddress?.trim()) {
+        throw new BadRequestException('La dirección de entrega es obligatoria para domicilios')
+      }
+      if (dto.paymentMethod === 'CASH') {
+        throw new BadRequestException('Los domicilios se pagan por pasarela antes de confirmar')
+      }
+    }
+
+    // Mesa obligatoria para consumir en tienda
+    let tableId: string | null = null
+    let tableLabel: string | null = null
+    if (dto.orderType === 'DINE_IN') {
+      if (dto.tableId) {
+        const table = await this.prisma.table.findFirst({
+          where: { id: dto.tableId, restaurantId: dto.restaurantId, isActive: true },
+        })
+        if (!table) throw new BadRequestException('La mesa seleccionada no está disponible')
+        tableId = table.id
+        tableLabel = table.name
+      } else if (dto.tableLabel?.trim()) {
+        tableLabel = dto.tableLabel.trim()
+      } else {
+        throw new BadRequestException('Selecciona la mesa para pedir en el restaurante')
+      }
+    }
+
     const menuItems = await this.prisma.menuItem.findMany({
       where: {
         id: { in: dto.items.map((i) => i.menuItemId) },
@@ -78,12 +107,19 @@ export class OrdersService {
 
     const customerTokenPlaceholder = `temp-${Date.now()}`
 
+    // Pago en restaurante: el pedido se confirma y va a cocina de inmediato;
+    // el cobro queda pendiente hasta que el dueño lo marque como pagado.
+    const payAtRestaurant = dto.paymentMethod === 'CASH'
+
     const order = await this.prisma.order.create({
       data: {
         restaurantId: dto.restaurantId,
         orderNumber,
-        status: 'PENDING',
+        status: payAtRestaurant ? 'CONFIRMED' : 'PENDING',
+        confirmedAt: payAtRestaurant ? new Date() : null,
         orderType: dto.orderType,
+        tableId,
+        tableLabel,
         total,
         costTotal,
         customerName: dto.customerName,
@@ -113,7 +149,16 @@ export class OrdersService {
 
     this.gateway.emitNewOrder(dto.restaurantId, updatedOrder)
 
-    const paymentUrl = `https://checkout.wompi.co/p/?public-key=${process.env.WOMPI_PUBLIC_KEY}&currency=COP&amount-in-cents=${Math.round(total * 100)}&reference=${order.id}`
+    let paymentUrl: string | null = null
+    if (payAtRestaurant) {
+      // Ya está confirmado: descontar inventario de una vez
+      await this.stockQueue.add(
+        { orderId: order.id, restaurantId: dto.restaurantId },
+        { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
+      )
+    } else {
+      paymentUrl = `https://checkout.wompi.co/p/?public-key=${process.env.WOMPI_PUBLIC_KEY}&currency=COP&amount-in-cents=${Math.round(total * 100)}&reference=${order.id}`
+    }
 
     return {
       orderId: order.id,
@@ -137,17 +182,21 @@ export class OrdersService {
       orderNumber: order.orderNumber,
       status: order.status,
       orderType: order.orderType,
+      tableLabel: order.tableLabel,
       items: order.items,
       total: order.total,
+      paymentMethod: order.payment?.method,
+      paymentStatus: order.payment?.status,
       confirmedAt: order.confirmedAt,
       deliveredAt: order.deliveredAt,
       createdAt: order.createdAt,
     }
   }
 
-  async getOrders(restaurantId: string, status?: string, date?: string) {
+  async getOrders(restaurantId: string, status?: string, date?: string, type?: string) {
     const where: any = { restaurantId }
     if (status) where.status = status
+    if (type) where.orderType = type
     if (date) {
       const d = new Date(date)
       const start = new Date(d)
@@ -186,6 +235,19 @@ export class OrdersService {
       include: { items: true, payment: true },
     })
 
+    // Si se cancela con cobro en restaurante pendiente, anular el pago:
+    // nunca debe sumar al dashboard
+    if (
+      dto.status === 'CANCELLED' &&
+      updated.payment?.method === 'CASH' &&
+      updated.payment.status === 'PENDING'
+    ) {
+      await this.prisma.payment.update({
+        where: { id: updated.payment.id },
+        data: { status: 'VOIDED' },
+      })
+    }
+
     this.gateway.emitOrderUpdated(restaurantId, orderId, updated)
 
     await this.pushQueue.add('order-status-changed', {
@@ -194,6 +256,38 @@ export class OrdersService {
       customerPhone: order.customerPhone,
     })
 
+    return updated
+  }
+
+  // Cobro físico de pedidos con "Pagar en restaurante": solo aquí
+  // el ingreso empieza a sumar al dashboard financiero
+  async markAsPaid(orderId: string, restaurantId: string) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, restaurantId },
+      include: { payment: true },
+    })
+    if (!order) throw new NotFoundException('Pedido no encontrado')
+    if (order.status === 'CANCELLED') {
+      throw new BadRequestException('No se puede cobrar un pedido cancelado')
+    }
+    if (!order.payment || order.payment.method !== 'CASH') {
+      throw new BadRequestException('Este pedido no tiene cobro pendiente en restaurante')
+    }
+    if (order.payment.status === 'APPROVED') {
+      throw new BadRequestException('Este pedido ya está pagado')
+    }
+
+    await this.prisma.payment.update({
+      where: { id: order.payment.id },
+      data: { status: 'APPROVED', paidAt: new Date() },
+    })
+
+    const updated = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: true, payment: true },
+    })
+
+    this.gateway.emitOrderUpdated(restaurantId, orderId, updated)
     return updated
   }
 }

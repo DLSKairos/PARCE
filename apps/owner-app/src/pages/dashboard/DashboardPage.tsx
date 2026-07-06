@@ -8,11 +8,15 @@ import { Spinner } from '../../components/ui/Spinner'
 interface DashboardData {
   today: string
   revenue: number
+  revenueGateway: number
+  revenueCash: number
   costs: number
   expenses: number
   netProfit: number
   ordersCount: number
   avgOrderValue: number
+  pendingChargesCount: number
+  pendingChargesTotal: number
   weekTrend: { date: string; revenue: number }[]
 }
 
@@ -90,6 +94,21 @@ export function DashboardPage() {
         <p className="font-body text-texto-tenue text-xs mt-1">{data?.today}</p>
       </Card>
 
+      {/* Cobros pendientes en mesa */}
+      {(data?.pendingChargesCount || 0) > 0 && (
+        <Card className="mb-4 bg-ambar/10 border border-ambar/40" onClick={() => navigate('/orders')}>
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="font-ui font-semibold text-texto-oscuro text-sm">
+                🟠 Tienes {data!.pendingChargesCount} {data!.pendingChargesCount === 1 ? 'pedido pendiente' : 'pedidos pendientes'} de cobro
+              </p>
+              <p className="font-body text-texto-tenue text-xs">Suman al dashboard cuando los marques como pagados</p>
+            </div>
+            <p className="font-ui font-bold text-ambar">{fmt(data!.pendingChargesTotal)}</p>
+          </div>
+        </Card>
+      )}
+
       {/* Métricas secundarias */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <Card className="text-center">
@@ -105,6 +124,21 @@ export function DashboardPage() {
           <p className="font-ui font-bold text-lg text-texto-oscuro">{fmt(data?.expenses || 0)}</p>
         </Card>
       </div>
+
+      {/* Desglose de ingresos */}
+      {(data?.revenue || 0) > 0 && (
+        <Card className="mb-4">
+          <p className="font-body text-texto-tenue text-sm mb-2">¿Por dónde entró la plata hoy?</p>
+          <div className="flex justify-between font-body text-sm mb-1">
+            <span className="text-texto-oscuro">💳 Pasarela</span>
+            <span className="font-ui font-semibold text-texto-oscuro">{fmt(data?.revenueGateway || 0)}</span>
+          </div>
+          <div className="flex justify-between font-body text-sm">
+            <span className="text-texto-oscuro">💵 Efectivo / en el local</span>
+            <span className="font-ui font-semibold text-texto-oscuro">{fmt(data?.revenueCash || 0)}</span>
+          </div>
+        </Card>
+      )}
 
       {/* Pedidos del día */}
       <Card className="mb-4 flex justify-between items-center" onClick={() => navigate('/orders')}>

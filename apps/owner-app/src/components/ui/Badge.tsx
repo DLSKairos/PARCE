@@ -3,6 +3,7 @@ const statusConfig: Record<string, { label: string; classes: string }> = {
   CONFIRMED:  { label: 'Confirmado',     classes: 'bg-blue-100 text-blue-800' },
   PREPARING:  { label: 'En preparación', classes: 'bg-ambar/20 text-ambar' },
   READY:      { label: 'Listo',          classes: 'bg-green-100 text-green-800' },
+  IN_TRANSIT: { label: 'En camino',      classes: 'bg-purple-100 text-purple-800' },
   DELIVERED:  { label: 'Entregado',      classes: 'bg-gray-100 text-gray-600' },
   CANCELLED:  { label: 'Cancelado',      classes: 'bg-red-100 text-red-600' },
 }

@@ -24,6 +24,15 @@ export interface RestaurantPublicProfile {
   coverUrl?: string
   isOpen: boolean
   phone?: string
+  tables?: RestaurantTable[]
+}
+
+export interface RestaurantTable {
+  id: string
+  restaurantId: string
+  name: string
+  position: number
+  isActive: boolean
 }
 
 export interface RestaurantPlan {

@@ -3,6 +3,7 @@ export enum OrderStatus {
   CONFIRMED = 'CONFIRMED',
   PREPARING = 'PREPARING',
   READY = 'READY',
+  IN_TRANSIT = 'IN_TRANSIT',
   DELIVERED = 'DELIVERED',
   CANCELLED = 'CANCELLED',
 }
@@ -10,4 +11,5 @@ export enum OrderStatus {
 export enum OrderType {
   PICKUP = 'PICKUP',
   DELIVERY = 'DELIVERY',
+  DINE_IN = 'DINE_IN',
 }
